@@ -28,6 +28,7 @@ DEFAULT_RELEASE_VERSION="zoro-v0.1.0"
 DEFAULT_LOG_LEVEL="info"
 DEFAULT_KERNEL_LOG_LEVEL="warn"
 DEFAULT_DOWNLOAD_BASE="https://github.com/nonamezr/Xboard-Node/releases"
+OFFICIAL_XBCTL_DOWNLOAD_BASE="https://github.com/cedar2025/xboard-node/releases"
 
 ACTION="${DEFAULT_ACTION}"
 MODE=""
@@ -489,6 +490,11 @@ resolve_download_url() {
     fi
 }
 
+resolve_official_xbctl_url() {
+    local artifact="$1"
+    DOWNLOAD_URL="${OFFICIAL_XBCTL_DOWNLOAD_BASE}/latest/download/${artifact}"
+}
+
 stage_binary() {
     local staged="$TMP_DIR/xboard-node"
     local local_src
@@ -529,11 +535,12 @@ stage_xbctl() {
         log_step "Using local xbctl binary: ${local_src}"
         cp "$local_src" "$staged"
     else
-        resolve_download_url "xbctl-linux-${ARCH}"
-        log_step "Downloading xbctl: ${DOWNLOAD_URL}"
+        resolve_official_xbctl_url "xbctl-linux-${ARCH}"
+        log_step "Downloading xbctl from official release: ${DOWNLOAD_URL}"
         if ! curl -fsSL "$DOWNLOAD_URL" -o "$staged"; then
-            log_warn "Failed to download xbctl from ${DOWNLOAD_URL}; using xboard-node binary as xbctl"
-            cp "$TMP_DIR/xboard-node" "$staged"
+            log_error "Failed to download xbctl from official release: ${DOWNLOAD_URL}"
+            log_error "The Zoro release only ships xboard-node-linux-${ARCH}; xbctl must come from cedar2025/xboard-node latest release or be provided with --xbctl-binary."
+            exit 1
         fi
     fi
     chmod +x "$staged"
