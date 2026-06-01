@@ -555,7 +555,19 @@ func applyStreamSettings(base M, nc *model.NodeSpec, tc kernel.TLSCert) {
 		ss["xhttpSettings"] = xhttpSettings
 
 	case "tcp":
-		// default, no extra settings
+		if isTCPHTTPHeader(nc) {
+			ss["tcpSettings"] = M{
+				"header": M{
+					"type": "http",
+					"request": M{
+						"path": tcpHTTPHeaderPaths(nc),
+						"headers": M{
+							"Host": tcpHTTPHeaderHosts(nc),
+						},
+					},
+				},
+			}
+		}
 	}
 
 	// TLS
@@ -606,6 +618,84 @@ func applyStreamSettings(base M, nc *model.NodeSpec, tc kernel.TLSCert) {
 	}
 
 	base["streamSettings"] = ss
+}
+
+func isTCPHTTPHeader(nc *model.NodeSpec) bool {
+	if nc == nil || nc.Protocol != "vless" || nc.Network != "tcp" || nc.NetworkSettings == nil {
+		return false
+	}
+	return strings.EqualFold(fmt.Sprint(nc.NetworkSettings["header.type"]), "http") ||
+		strings.EqualFold(fmt.Sprint(nc.NetworkSettings["headerType"]), "http") ||
+		strings.EqualFold(fmt.Sprint(nc.NetworkSettings["header_type"]), "http") ||
+		strings.EqualFold(fmt.Sprint(nc.NetworkSettings["type"]), "http") ||
+		strings.EqualFold(fmt.Sprint(nc.NetworkSettings["header"]), "http") ||
+		nestedHeaderType(nc.NetworkSettings) == "http"
+}
+
+func nestedHeaderType(settings map[string]interface{}) string {
+	if header, ok := settings["header"].(map[string]interface{}); ok {
+		return strings.ToLower(fmt.Sprint(header["type"]))
+	}
+	return ""
+}
+
+func tcpHTTPHeaderPaths(nc *model.NodeSpec) []string {
+	paths := stringSliceFromNetworkSettings(nc.NetworkSettings, "path", "paths")
+	if len(paths) == 0 {
+		return []string{"/"}
+	}
+	return paths
+}
+
+func tcpHTTPHeaderHosts(nc *model.NodeSpec) []string {
+	return stringSliceFromNetworkSettings(nc.NetworkSettings, "host", "Host")
+}
+
+func stringSliceFromNetworkSettings(settings map[string]interface{}, keys ...string) []string {
+	for _, key := range keys {
+		if values := stringSlice(settings[key]); len(values) > 0 {
+			return values
+		}
+	}
+	if header, ok := settings["header"].(map[string]interface{}); ok {
+		if req, ok := header["request"].(map[string]interface{}); ok {
+			for _, key := range keys {
+				if values := stringSlice(req[key]); len(values) > 0 {
+					return values
+				}
+			}
+			if headers, ok := req["headers"].(map[string]interface{}); ok {
+				for _, key := range keys {
+					if values := stringSlice(headers[key]); len(values) > 0 {
+						return values
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func stringSlice(v interface{}) []string {
+	switch x := v.(type) {
+	case string:
+		if x == "" {
+			return nil
+		}
+		return []string{x}
+	case []string:
+		return x
+	case []interface{}:
+		out := make([]string, 0, len(x))
+		for _, item := range x {
+			s := fmt.Sprint(item)
+			if s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 func buildRealitySettings(nc *model.NodeSpec) M {

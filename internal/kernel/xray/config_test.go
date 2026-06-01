@@ -226,6 +226,73 @@ func TestBuildConfig_VMess_Users(t *testing.T) {
 	}
 }
 
+func TestBuildConfig_VLESS_TCPHTTPHeader(t *testing.T) {
+	nc := panel.NodeConfig{
+		Protocol:   "vless",
+		ServerPort: 443,
+		Network:    "tcp",
+		NetworkSettings: map[string]interface{}{
+			"header": map[string]interface{}{"type": "http"},
+			"host":   "www.softbank.jp",
+			"path":   "/",
+		},
+	}
+	cfg := buildConfig(testKernelCfg, testNodeSpec(&nc), testUsers, kernel.TLSCert{})
+	ib := cfg["inbounds"].([]M)[0]
+	ss := ib["streamSettings"].(M)
+	tcpSettings := ss["tcpSettings"].(M)
+	header := tcpSettings["header"].(M)
+	if header["type"] != "http" {
+		t.Fatalf("expected tcp header http, got %v", header["type"])
+	}
+	request := header["request"].(M)
+	paths := request["path"].([]string)
+	if len(paths) != 1 || paths[0] != "/" {
+		t.Fatalf("unexpected paths: %#v", paths)
+	}
+	headers := request["headers"].(M)
+	hosts := headers["Host"].([]string)
+	if len(hosts) != 1 || hosts[0] != "www.softbank.jp" {
+		t.Fatalf("unexpected hosts: %#v", hosts)
+	}
+}
+
+func TestBuildConfig_VLESS_TCPNoneHasNoHTTPHeader(t *testing.T) {
+	nc := panel.NodeConfig{
+		Protocol:   "vless",
+		ServerPort: 443,
+		Network:    "tcp",
+	}
+	cfg := buildConfig(testKernelCfg, testNodeSpec(&nc), testUsers, kernel.TLSCert{})
+	ib := cfg["inbounds"].([]M)[0]
+	ss := ib["streamSettings"].(M)
+	if _, ok := ss["tcpSettings"]; ok {
+		t.Fatalf("unexpected tcpSettings for VLESS tcp none: %#v", ss["tcpSettings"])
+	}
+}
+
+func TestBuildConfig_VLESS_WSUnchangedByHTTPHeader(t *testing.T) {
+	nc := panel.NodeConfig{
+		Protocol:   "vless",
+		ServerPort: 443,
+		Network:    "ws",
+		NetworkSettings: map[string]interface{}{
+			"header": map[string]interface{}{"type": "http"},
+			"host":   "example.com",
+			"path":   "/ws",
+		},
+	}
+	cfg := buildConfig(testKernelCfg, testNodeSpec(&nc), testUsers, kernel.TLSCert{})
+	ib := cfg["inbounds"].([]M)[0]
+	ss := ib["streamSettings"].(M)
+	if _, ok := ss["tcpSettings"]; ok {
+		t.Fatalf("unexpected tcpSettings for VLESS ws: %#v", ss["tcpSettings"])
+	}
+	if ss["wsSettings"] == nil {
+		t.Fatal("expected wsSettings to remain present")
+	}
+}
+
 func TestBuildConfig_VLESS_Flow(t *testing.T) {
 	nc := panel.NodeConfig{
 		Protocol:   "vless",
