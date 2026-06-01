@@ -213,6 +213,55 @@ func TestBuildInbound_VLESS(t *testing.T) {
 	assertMapValue(t, users[0], "uuid", "aaaaaaaa-1111-2222-3333-444444444444")
 }
 
+func TestBuildInbound_VLESS_TCPHTTPHeader(t *testing.T) {
+	nc := &panel.NodeConfig{
+		Protocol:   "vless",
+		ServerPort: 443,
+		Network:    "tcp",
+		NetworkSettings: map[string]interface{}{
+			"header": map[string]interface{}{"type": "http"},
+			"host":   "www.softbank.jp",
+			"path":   "/",
+		},
+	}
+	inbound := buildInbound(testNodeSpec(nc), testUsers, kernel.TLSCert{})
+	transport := inbound["transport"].(M)
+	assertMapValue(t, transport, "type", "http")
+	assertMapValue(t, transport, "host", []string{"www.softbank.jp"})
+	assertMapValue(t, transport, "path", "/")
+	headers := transport["headers"].(M)
+	assertMapValue(t, headers, "Host", []string{"www.softbank.jp"})
+}
+
+func TestBuildInbound_VLESS_TCPNoneHasNoTransport(t *testing.T) {
+	nc := &panel.NodeConfig{
+		Protocol:   "vless",
+		ServerPort: 443,
+		Network:    "tcp",
+	}
+	inbound := buildInbound(testNodeSpec(nc), testUsers, kernel.TLSCert{})
+	if _, ok := inbound["transport"]; ok {
+		t.Fatalf("unexpected transport for VLESS tcp none: %#v", inbound["transport"])
+	}
+}
+
+func TestBuildInbound_VLESS_WSUnchangedByHTTPHeader(t *testing.T) {
+	nc := &panel.NodeConfig{
+		Protocol:   "vless",
+		ServerPort: 443,
+		Network:    "ws",
+		NetworkSettings: map[string]interface{}{
+			"header": map[string]interface{}{"type": "http"},
+			"host":   "example.com",
+			"path":   "/ws",
+		},
+	}
+	inbound := buildInbound(testNodeSpec(nc), testUsers, kernel.TLSCert{})
+	transport := inbound["transport"].(M)
+	assertMapValue(t, transport, "type", "ws")
+	assertMapValue(t, transport, "path", "/ws")
+}
+
 func TestBuildInbound_VLESS_WithFlow(t *testing.T) {
 	nc := &panel.NodeConfig{
 		Protocol:   "vless",
