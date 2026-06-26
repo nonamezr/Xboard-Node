@@ -233,6 +233,26 @@ func TestBuildInbound_VLESS_TCPHTTPHeader(t *testing.T) {
 	assertMapValue(t, headers, "Host", []string{"www.softbank.jp"})
 }
 
+func TestBuildInbound_VMess_TCPHTTPHeader(t *testing.T) {
+	nc := &panel.NodeConfig{
+		Protocol:   "vmess",
+		ServerPort: 443,
+		Network:    "tcp",
+		NetworkSettings: map[string]interface{}{
+			"header": map[string]interface{}{"type": "http"},
+			"host":   "www.softbank.jp",
+			"path":   "/",
+		},
+	}
+	inbound := buildInbound(testNodeSpec(nc), testUsers, kernel.TLSCert{})
+	transport := inbound["transport"].(M)
+	assertMapValue(t, transport, "type", "http")
+	assertMapValue(t, transport, "host", []string{"www.softbank.jp"})
+	assertMapValue(t, transport, "path", "/")
+	headers := transport["headers"].(M)
+	assertMapValue(t, headers, "Host", []string{"www.softbank.jp"})
+}
+
 func TestBuildInbound_VLESS_TCPNoneHasNoTransport(t *testing.T) {
 	nc := &panel.NodeConfig{
 		Protocol:   "vless",

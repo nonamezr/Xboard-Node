@@ -859,7 +859,7 @@ func applyTransport(base M, nc *model.NodeSpec) {
 }
 
 func isTCPHTTPHeader(nc *model.NodeSpec) bool {
-	if nc == nil || nc.Protocol != "vless" || nc.Network != "tcp" || nc.NetworkSettings == nil {
+	if nc == nil || (nc.Protocol != "vless" && nc.Protocol != "vmess") || nc.Network != "tcp" || nc.NetworkSettings == nil {
 		return false
 	}
 	return strings.EqualFold(fmt.Sprint(nc.NetworkSettings["header.type"]), "http") ||
