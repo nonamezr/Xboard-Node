@@ -127,7 +127,7 @@ func (p *MachinePanelControlPlane) Discover(
 
 func (p *MachinePanelControlPlane) Report(payload ReportPayload) error {
 	return p.client.Report(
-		payload.Traffic, payload.Alive, payload.Online,
+		payload.Traffic, payload.Alive, payload.AliveFullSnapshot, payload.Online,
 		payload.CPU, payload.Mem, payload.Swap, payload.Disk,
 		payload.Metrics,
 	)

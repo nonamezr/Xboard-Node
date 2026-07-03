@@ -49,14 +49,15 @@ type Snapshot struct {
 }
 
 type ReportPayload struct {
-	Traffic map[int][2]int64
-	Alive   map[int][]string
-	Online  map[int]int
-	CPU     float64
-	Mem     [2]uint64
-	Swap    [2]uint64
-	Disk    [2]uint64
-	Metrics map[string]interface{}
+	Traffic           map[int][2]int64
+	Alive             map[int][]string
+	Online            map[int]int
+	CPU               float64
+	Mem               [2]uint64
+	Swap              [2]uint64
+	Disk              [2]uint64
+	Metrics           map[string]interface{}
+	AliveFullSnapshot bool
 }
 
 type PushClient interface {

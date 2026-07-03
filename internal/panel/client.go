@@ -106,7 +106,7 @@ func (c *Client) Handshake() (*HandshakeResponse, error) {
 // The optional metrics map allows the node to submit richer telemetry
 // (active connections, per-core CPU, GC stats, limiter hits, etc.)
 // without changing the core schema of status.
-func (c *Client) Report(traffic map[int][2]int64, alive map[int][]string, online map[int]int,
+func (c *Client) Report(traffic map[int][2]int64, alive map[int][]string, aliveFullSnapshot bool, online map[int]int,
 	cpu float64, mem, swap, disk [2]uint64,
 	metrics map[string]interface{},
 ) error {
@@ -126,12 +126,15 @@ func (c *Client) Report(traffic map[int][2]int64, alive map[int][]string, online
 		}()
 	}
 
-	if len(alive) > 0 {
+	if aliveFullSnapshot || len(alive) > 0 {
 		a := aliveMapPool.Get().(map[string][]string)
 		for uid, ips := range alive {
 			a[strconv.Itoa(uid)] = ips
 		}
 		payload["alive"] = a
+		if aliveFullSnapshot {
+			payload["alive_full_snapshot"] = true
+		}
 		defer func() {
 			for k := range a {
 				delete(a, k)

@@ -198,6 +198,24 @@ func (t *Tracker) FlushAliveIPs() map[int][]string {
 	return t.aliveIPsBuf
 }
 
+// CurrentAliveIPs returns a fresh copy of the current per-user alive IP snapshot.
+// Unlike FlushAliveIPs, it does not perform change detection and never returns
+// nil solely because the snapshot is unchanged. REST reporting uses this for
+// alive_full_snapshot mode so the panel can refresh unchanged online users and
+// clear offline users immediately when the snapshot is empty.
+func (t *Tracker) CurrentAliveIPs() map[int][]string {
+	s := t.live.Load()
+	result := make(map[int][]string, len(s.aliveIPs))
+	for uid, ips := range s.aliveIPs {
+		list := make([]string, 0, len(ips))
+		for ip := range ips {
+			list = append(list, ip)
+		}
+		result[uid] = list
+	}
+	return result
+}
+
 // calcAliveIPsHash computes a deterministic hash for change detection.
 func calcAliveIPsHash(aliveIPs map[int]map[string]bool) string {
 	if len(aliveIPs) == 0 {
