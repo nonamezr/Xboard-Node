@@ -127,6 +127,10 @@ func NodeSpecFromPanel(nc *panel.NodeConfig) *NodeSpec {
 
 func NodeSpecFromPanelValidated(nc *panel.NodeConfig, kcfg config.KernelConfig) (*NodeSpec, error) {
 	spec := NodeSpecFromPanel(nc)
+	if spec != nil {
+		spec.LocalListenIP = kcfg.ListenOverrideIP
+		spec.LocalListenPort = kcfg.ListenOverridePort
+	}
 	if err := ValidateNodeSpec(spec, kcfg); err != nil {
 		return nil, err
 	}

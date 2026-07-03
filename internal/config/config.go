@@ -19,14 +19,14 @@ import (
 )
 
 type Config struct {
-	InstanceID string `yaml:"-"`
-	Panel   PanelConfig   `yaml:"panel"`
-	Node    NodeConfig    `yaml:"node"`
-	Kernel  KernelConfig  `yaml:"kernel"`
-	Cert    CertConfig    `yaml:"cert"`
-	Log     LogConfig     `yaml:"log"`
-	Runtime RuntimeConfig `yaml:"runtime"`
-	WS      WSConfig      `yaml:"ws"`
+	InstanceID string        `yaml:"-"`
+	Panel      PanelConfig   `yaml:"panel"`
+	Node       NodeConfig    `yaml:"node"`
+	Kernel     KernelConfig  `yaml:"kernel"`
+	Cert       CertConfig    `yaml:"cert"`
+	Log        LogConfig     `yaml:"log"`
+	Runtime    RuntimeConfig `yaml:"runtime"`
+	WS         WSConfig      `yaml:"ws"`
 	// Standalone enables a local-only node that never contacts the panel.
 	Standalone *StandaloneConfig `yaml:"standalone,omitempty"`
 	// HealthPort enables a lightweight HTTP health-check endpoint on the
@@ -142,6 +142,14 @@ type KernelConfig struct {
 	// customization of dns, outbounds, endpoints, route, experimental, etc.
 	// Compatible with V2bX OriginalPath format.
 	CustomConfig string `yaml:"custom_config"`
+
+	// ListenOverrideIP/Port override only the local kernel bind address.
+	// They do not change the panel-provided server_port, reports, or customer
+	// subscription config. This is intended for a local inline proxy/sidecar such
+	// as node-config-guard listening on the public port and forwarding to the
+	// kernel on a loopback backend port.
+	ListenOverrideIP   string `yaml:"listen_override_ip"`
+	ListenOverridePort int    `yaml:"listen_override_port"`
 }
 
 type CertConfig struct {

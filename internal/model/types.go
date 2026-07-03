@@ -6,6 +6,8 @@ type NodeSpec struct {
 	Protocol        string
 	ListenIP        string
 	ServerPort      int
+	LocalListenIP   string
+	LocalListenPort int
 	Network         string
 	NetworkSettings map[string]any
 	Routes          []RouteRule

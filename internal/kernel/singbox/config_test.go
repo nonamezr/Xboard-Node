@@ -956,3 +956,17 @@ func TestExtractECHInbound(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildInbound_ListenOverrideLocalOnly(t *testing.T) {
+	nc := &panel.NodeConfig{Protocol: "vless", ListenIP: "0.0.0.0", ServerPort: 443}
+	spec, err := model.NodeSpecFromPanelValidated(nc, config.KernelConfig{Type: "singbox", ListenOverrideIP: "127.0.0.1", ListenOverridePort: 8443})
+	if err != nil {
+		t.Fatalf("NodeSpecFromPanelValidated: %v", err)
+	}
+	inbound := buildInbound(spec, testUsers, kernel.TLSCert{})
+	assertMapValue(t, inbound, "listen", "127.0.0.1")
+	assertMapValue(t, inbound, "listen_port", 8443)
+	if spec.ServerPort != 443 || spec.ListenIP != "0.0.0.0" {
+		t.Fatalf("panel fields changed: listen=%q port=%d", spec.ListenIP, spec.ServerPort)
+	}
+}

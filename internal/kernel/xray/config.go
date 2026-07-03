@@ -199,13 +199,13 @@ func xrayLogLevel(singboxLevel string) string {
 
 func buildInbound(nc *model.NodeSpec, users []model.UserSpec, tc kernel.TLSCert) M {
 	listenAddr := "::"
-	if nc.ListenIP != "" {
-		listenAddr = nc.ListenIP
+	if nc.EffectiveListenIP() != "" {
+		listenAddr = nc.EffectiveListenIP()
 	}
 	base := M{
 		"tag":      nc.Protocol + "-in",
 		"listen":   listenAddr,
-		"port":     nc.ServerPort,
+		"port":     nc.EffectiveListenPort(),
 		"protocol": nc.Protocol,
 		"streamSettings": M{
 			"sockopt": M{

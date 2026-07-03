@@ -36,6 +36,9 @@ func ValidateNodeSpec(n *NodeSpec, kcfg config.KernelConfig) error {
 	if err := ValidateCustomRouteRules(n.CustomRouteRules, kernelType, availableTags); err != nil {
 		return fmt.Errorf("validate custom route rules: %w", err)
 	}
+	if n.LocalListenPort < 0 || n.LocalListenPort > 65535 {
+		return fmt.Errorf("local listen override port must be between 1 and 65535 when set")
+	}
 	if err := validateTransportKernel(n.Network, kernelType); err != nil {
 		return err
 	}
