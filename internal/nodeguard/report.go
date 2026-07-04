@@ -24,6 +24,7 @@ type ReportPayload struct {
 	Action       string `json:"action,omitempty"`
 	Confidence   string `json:"confidence,omitempty"`
 	Transport    string `json:"transport,omitempty"`
+	ReportedAt   int64  `json:"reported_at,omitempty"`
 }
 
 func BuildReportPayload(c Config, ip string, a Actual, d Decision) ReportPayload {
