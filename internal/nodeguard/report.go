@@ -3,6 +3,8 @@ package nodeguard
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -78,5 +80,9 @@ func (r HTTPReporter) Report(p ReportPayload) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("config guard report failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
 	return nil
 }

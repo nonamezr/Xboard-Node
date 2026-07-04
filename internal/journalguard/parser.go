@@ -9,6 +9,7 @@ import (
 )
 
 var (
+	clientIPRe     = regexp.MustCompile(`(?i)process connection from\s+((?:\d{1,3}\.){3}\d{1,3}|\[[0-9a-f:]+\]|[0-9a-f:]+):\d+`)
 	badHostRe      = regexp.MustCompile(`(?i)bad host:\s*([^\s,;]+)`)
 	validateHostRe = regexp.MustCompile(`(?i)failed to validate host,\s*request:([^\s,;]+),\s*config:([^\s,;]+)`)
 	pathRe         = regexp.MustCompile(`(?i)\bpath[:=]\s*([^\s,;]+)`)
@@ -19,6 +20,7 @@ type ParsedReject struct {
 	ActualHost string
 	ActualPath string
 	ActualSNI  string
+	ClientIP   string
 	RawReason  string
 	ReportedAt time.Time
 }
@@ -33,6 +35,9 @@ func ParseRejectLine(line string, now time.Time) (ParsedReject, bool) {
 	p.RawReason = line
 	p.ReportedAt = parseJournalTimestamp(line, now)
 
+	if m := clientIPRe.FindStringSubmatch(line); len(m) == 2 {
+		p.ClientIP = cleanClientIP(m[1])
+	}
 	if m := badHostRe.FindStringSubmatch(line); len(m) == 2 {
 		p.ActualHost = cleanHost(m[1])
 	}
@@ -59,12 +64,19 @@ func (p ParsedReject) Payload(token string, nodeID int, transport string) nodegu
 		ActualHost: p.ActualHost,
 		ActualPath: p.ActualPath,
 		ActualSNI:  p.ActualSNI,
+		ClientIP:   p.ClientIP,
 		RawReason:  p.RawReason,
 		Action:     "monitor",
 		Confidence: "low",
 		Transport:  transport,
 		ReportedAt: p.ReportedAt.Unix(),
 	}
+}
+
+func cleanClientIP(v string) string {
+	v = strings.TrimSpace(v)
+	v = strings.Trim(v, `[]`)
+	return v
 }
 
 func cleanHost(v string) string {
