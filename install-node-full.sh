@@ -20,8 +20,8 @@ NODE_SERVICE_PATH="/etc/systemd/system/${NODE_SERVICE}"
 GUARD_SERVICE_PATH="/etc/systemd/system/${GUARD_SERVICE}"
 BACKUP_ROOT="/root"
 DEFAULT_KERNEL="singbox"
-DEFAULT_SOURCE_BASE="https://github.com/nonamezr/Xboard-Node/releases/download/v20260704-node-prod-full"
-EXPECTED_NODE_SHA="abbc312bae81313e06dd7498faa2273d68447902d4201c31a19b6228b3401b6a"
+DEFAULT_SOURCE_BASE="https://github.com/nonamezr/Xboard-Node/releases/download/v20260706-node-sniff-quic-prod"
+EXPECTED_NODE_SHA="b5c8f89eb0de82e74fc8cededf1a449da7983cd1e7af303161e238e53d07b1f6"
 EXPECTED_GUARD_SHA="fa8a7fecc751187719c1a7797f211588e0255af1621b6fea09a6b06e6ade3cc9"
 
 MODE="machine"
@@ -67,7 +67,7 @@ Optional:
   --mode machine|node      xboard-node config mode (default: machine)
   --kernel singbox|xray    Kernel type for new config only (default: singbox)
   --source-base URL        Directory containing binaries; supports file://, http(s)://
-                           default: https://github.com/nonamezr/Xboard-Node/releases/download/v20260704-node-prod-full
+                           default: https://github.com/nonamezr/Xboard-Node/releases/download/v20260706-node-sniff-quic-prod
   --node-binary PATH       Use local staged xboard-node binary
   --guard-binary PATH      Use local staged node-journal-guard binary
   --build-local            Build both binaries from current repo instead of downloading
