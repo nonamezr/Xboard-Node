@@ -680,7 +680,7 @@ func TestBuildConfig_AllProtocols_ValidJSON(t *testing.T) {
 // --- Routes ---
 
 func TestBuildRoutes_Default(t *testing.T) {
-	route := buildRoutes(nil, nil, nil)
+	route := buildRoutes(nil, nil, nil, "vless-in")
 	assertMapValue(t, route, "final", "direct")
 
 	rules := route["rules"].([]M)
@@ -697,7 +697,7 @@ func TestBuildRoutes_WithCustomRules(t *testing.T) {
 		{ID: 2, Match: []string{"10.0.0.0/8"}, Action: "block"},
 		{ID: 3, Match: []string{"allowed.com"}, Action: "direct"},
 	}
-	route := buildRoutes(testRouteRules(rules), nil, nil)
+	route := buildRoutes(testRouteRules(rules), nil, nil, "vless-in")
 	allRules := route["rules"].([]M)
 
 	if len(allRules) != 5 {
@@ -722,7 +722,7 @@ func TestBuildRoutes_MultiMatch(t *testing.T) {
 		{ID: 1, Match: []string{"*.evil.com", "bad.org", "192.168.1.0/24"}, Action: "block"},
 		{ID: 2, Match: []string{"*.bypass.com"}, Action: "direct"},
 	}
-	route := buildRoutes(testRouteRules(rules), nil, nil)
+	route := buildRoutes(testRouteRules(rules), nil, nil, "vless-in")
 	allRules := route["rules"].([]M)
 
 	// 2 default private-IP rules + 1 domain rule + 1 CIDR rule + 1 domain rule = 5
@@ -768,31 +768,34 @@ func TestBuildRoutes_WithCustomRouteRules(t *testing.T) {
 			Action: model.RouteAction{Type: "direct"},
 		},
 	}
-	route := buildRoutes(nil, customRules, nil)
+	route := buildRoutes(nil, customRules, nil, "vless-in")
 	allRules := route["rules"].([]M)
-	if len(allRules) != 9 {
-		t.Fatalf("rules count: got %d, want 9", len(allRules))
+	if len(allRules) != 10 {
+		t.Fatalf("rules count: got %d, want 10", len(allRules))
 	}
-	if allRules[0]["domain"].([]string)[0] != "full.example.com" {
-		t.Fatalf("unexpected exact domain rule: %v", allRules[0])
+	if allRules[0]["action"] != "sniff" {
+		t.Fatalf("expected sniff route first, got %v", allRules[0])
 	}
-	if allRules[1]["domain_suffix"].([]string)[0] != "example.org" {
-		t.Fatalf("unexpected domain suffix rule: %v", allRules[1])
+	if allRules[1]["domain"].([]string)[0] != "full.example.com" {
+		t.Fatalf("unexpected exact domain rule: %v", allRules[1])
 	}
-	if allRules[2]["ip_cidr"].([]string)[0] != "1.1.1.0/24" {
-		t.Fatalf("unexpected ip cidr rule: %v", allRules[2])
+	if allRules[2]["domain_suffix"].([]string)[0] != "example.org" {
+		t.Fatalf("unexpected domain suffix rule: %v", allRules[2])
 	}
-	if allRules[3]["port"].([]int)[0] != 53 {
-		t.Fatalf("unexpected port rule: %v", allRules[3])
+	if allRules[3]["ip_cidr"].([]string)[0] != "1.1.1.0/24" {
+		t.Fatalf("unexpected ip cidr rule: %v", allRules[3])
 	}
-	if allRules[4]["network"].([]string)[0] != "tcp" {
-		t.Fatalf("unexpected network rule: %v", allRules[4])
+	if allRules[4]["port"].([]int)[0] != 53 {
+		t.Fatalf("unexpected port rule: %v", allRules[4])
 	}
-	if allRules[5]["source_ip_cidr"].([]string)[0] != "10.10.0.0/16" {
-		t.Fatalf("unexpected source cidr rule: %v", allRules[5])
+	if allRules[5]["network"].([]string)[0] != "tcp" {
+		t.Fatalf("unexpected network rule: %v", allRules[5])
 	}
-	if allRules[6]["source_port_range"].([]string)[0] != "2000:2001" {
-		t.Fatalf("unexpected source port rule: %v", allRules[6])
+	if allRules[6]["source_ip_cidr"].([]string)[0] != "10.10.0.0/16" {
+		t.Fatalf("unexpected source cidr rule: %v", allRules[6])
+	}
+	if allRules[7]["source_port_range"].([]string)[0] != "2000:2001" {
+		t.Fatalf("unexpected source port rule: %v", allRules[7])
 	}
 }
 
@@ -802,13 +805,16 @@ func TestBuildRoutes_StructuredCustomRulesRemainFirst(t *testing.T) {
 		Match:  model.RouteMatch{DomainSuffixes: []string{"structured.example"}},
 		Action: model.RouteAction{Type: "direct"},
 	}}
-	route := buildRoutes(nil, custom, raw)
+	route := buildRoutes(nil, custom, raw, "vless-in")
 	allRules := route["rules"].([]M)
-	if allRules[0]["outbound"] != "direct" {
-		t.Fatalf("expected structured route first, got %v", allRules[0]["outbound"])
+	if allRules[0]["action"] != "sniff" {
+		t.Fatalf("expected sniff route first, got %v", allRules[0])
 	}
-	if allRules[1]["outbound"] != "raw-tag" {
-		t.Fatalf("expected raw custom route second, got %v", allRules[1]["outbound"])
+	if allRules[1]["outbound"] != "direct" {
+		t.Fatalf("expected structured route second, got %v", allRules[1]["outbound"])
+	}
+	if allRules[2]["outbound"] != "raw-tag" {
+		t.Fatalf("expected raw custom route third, got %v", allRules[2]["outbound"])
 	}
 }
 

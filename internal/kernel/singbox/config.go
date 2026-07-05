@@ -59,7 +59,7 @@ func buildConfig(kcfg config.KernelConfig, nc *model.NodeSpec, users []model.Use
 	}
 
 	// Merge panel routes and static config routes
-	cfg["route"] = buildRoutes(nc.Routes, nc.CustomRouteRules, mergeRouteList(nc.CustomRoutes, kcfg.CustomRoute))
+	cfg["route"] = buildRoutes(nc.Routes, nc.CustomRouteRules, mergeRouteList(nc.CustomRoutes, kcfg.CustomRoute), nc.Protocol+"-in")
 
 	// Automatically enable rule_set caching (cache_file) when panel routes
 	// reference geoip:/geosite: entries so that the downloaded .srs rule_set
@@ -144,8 +144,35 @@ func mergeRouteList(a, b []map[string]any) []map[string]any {
 	return res
 }
 
-func buildRoutes(panelRoutes []model.RouteRule, customRules []model.CustomRouteRule, custom []map[string]any) M {
+func hasDomainCustomRouteRules(customRules []model.CustomRouteRule) bool {
+	for _, rule := range customRules {
+		if rule.Disabled {
+			continue
+		}
+		if len(rule.Match.Domains) > 0 || len(rule.Match.DomainSuffixes) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func buildSniffRule(inbound string) M {
+	rule := M{
+		"action":  "sniff",
+		"sniffer": []string{"tls", "http", "quic"},
+		"timeout": "1s",
+	}
+	if inbound != "" {
+		rule["inbound"] = inbound
+	}
+	return rule
+}
+
+func buildRoutes(panelRoutes []model.RouteRule, customRules []model.CustomRouteRule, custom []map[string]any, inboundTag string) M {
 	var rules []M
+	if hasDomainCustomRouteRules(customRules) {
+		rules = append(rules, buildSniffRule(inboundTag))
+	}
 
 	// Structured custom routes now take the highest priority for panel-managed overrides.
 	for _, rule := range customRules {
