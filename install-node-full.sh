@@ -67,7 +67,7 @@ Optional:
   --mode machine|node      xboard-node config mode (default: machine)
   --kernel singbox|xray    Kernel type for new config only (default: singbox)
   --source-base URL        Directory containing binaries; supports file://, http(s)://
-                           default: file:///root/.openclaw/workspace/node-binaries-20260704
+                           default: https://github.com/nonamezr/Xboard-Node/releases/download/v20260704-node-prod-full
   --node-binary PATH       Use local staged xboard-node binary
   --guard-binary PATH      Use local staged node-journal-guard binary
   --build-local            Build both binaries from current repo instead of downloading
