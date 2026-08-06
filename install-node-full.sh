@@ -36,6 +36,7 @@ NODE_BINARY_SOURCE=""
 GUARD_BINARY_SOURCE=""
 BUILD_LOCAL=0
 RESTART_SERVICES=1
+TUNE_ONLY=0
 VERIFY_PORT=""
 TMP_DIR=""
 CLEANUP_DONE=0
@@ -73,6 +74,7 @@ Optional:
   --build-local            Build both binaries from current repo instead of downloading
   --verify-port PORT       Verify TCP listen port after restart (optional)
   --no-restart             Install files/services but do not restart services
+  --tune-only              Apply network sysctl/qdisc/RPS tuning only; do not touch binaries/services
   --help                   Show help
 
 Example:
@@ -103,6 +105,7 @@ parse_args() {
             --build-local) BUILD_LOCAL=1; shift ;;
             --verify-port) VERIFY_PORT="${2:-}"; shift 2 ;;
             --no-restart) RESTART_SERVICES=0; shift ;;
+            --tune-only) TUNE_ONLY=1; RESTART_SERVICES=0; shift ;;
             --help|-h) usage; exit 0 ;;
             *) log_error "Unknown argument: $1"; usage; exit 2 ;;
         esac
@@ -117,6 +120,9 @@ require_root() {
 }
 
 validate_args() {
+    if [ "$TUNE_ONLY" -eq 1 ]; then
+        return
+    fi
     if [ "$MODE" != "machine" ] && [ "$MODE" != "node" ]; then
         log_error "--mode must be machine or node"
         exit 1
@@ -131,6 +137,9 @@ validate_args() {
 }
 
 read_token() {
+    if [ "$TUNE_ONLY" -eq 1 ]; then
+        return
+    fi
     if [ -n "$INPUT_TOKEN_FILE" ]; then
         TOKEN="$(tr -d '\r\n' < "$INPUT_TOKEN_FILE")"
     fi
@@ -138,6 +147,121 @@ read_token() {
         log_error "Token is empty"
         exit 1
     fi
+}
+
+
+default_iface() {
+    ip -o -4 route show default 2>/dev/null | awk '{print $5}' | head -1
+}
+
+hex_mask_for_cpus() {
+    local cpus="$1" mask
+    if [ "$cpus" -ge 31 ]; then
+        mask=$(( (1 << 31) - 1 ))
+    else
+        mask=$(( (1 << cpus) - 1 ))
+    fi
+    printf '%x' "$mask"
+}
+
+configure_network_tuning() {
+    log_step "Configuring VPN network tuning"
+
+    cat >/etc/sysctl.d/99-vpn-udp.conf <<'EOF_SYSCTL_UDP'
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.core.rmem_default = 8388608
+net.core.wmem_default = 4194304
+net.ipv4.udp_rmem_min = 131072
+net.ipv4.udp_wmem_min = 131072
+net.core.netdev_max_backlog = 5000
+EOF_SYSCTL_UDP
+    sysctl -p /etc/sysctl.d/99-vpn-udp.conf >/dev/null
+
+    cat >/etc/sysctl.d/99-vpn-qdisc.conf <<'EOF_SYSCTL_QDISC'
+net.core.default_qdisc = fq
+EOF_SYSCTL_QDISC
+    sysctl -p /etc/sysctl.d/99-vpn-qdisc.conf >/dev/null || true
+
+    local iface
+    iface="$(default_iface)"
+    if [ -n "$iface" ] && command -v tc >/dev/null 2>&1; then
+        tc qdisc replace dev "$iface" root fq || log_warn "Could not apply fq qdisc on ${iface}"
+    else
+        log_warn "Default interface not found or tc missing; qdisc runtime apply skipped"
+    fi
+
+    cat >/etc/sysctl.d/99-vpn-conntrack.conf <<'EOF_SYSCTL_CONNTRACK'
+net.netfilter.nf_conntrack_max = 262144
+net.netfilter.nf_conntrack_tcp_timeout_established = 3600
+net.netfilter.nf_conntrack_udp_timeout = 60
+net.netfilter.nf_conntrack_udp_timeout_stream = 180
+EOF_SYSCTL_CONNTRACK
+    mkdir -p /etc/modprobe.d
+    printf 'options nf_conntrack hashsize=32768\n' >/etc/modprobe.d/nf_conntrack.conf
+    if [ -f /proc/sys/net/netfilter/nf_conntrack_max ]; then
+        sysctl -p /etc/sysctl.d/99-vpn-conntrack.conf >/dev/null
+    else
+        log_info "nf_conntrack is not loaded; conntrack sysctl apply skipped (modprobe config written)"
+    fi
+
+    local cpus mask
+    cpus="$(nproc 2>/dev/null || echo 1)"
+    if [ "$cpus" -ge 2 ]; then
+        mask="$(hex_mask_for_cpus "$cpus")"
+        cat >/etc/systemd/system/rps-tune.service <<EOF_RPS
+[Unit]
+Description=Tune RPS for VPN UDP forwarding
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'set -e; sysctl -w net.core.rps_sock_flow_entries=32768 >/dev/null; IF=\$(ip -o -4 route show default | awk '\''{print \$5}'\'' | head -1); [ -n "\$IF" ] || exit 0; for f in /sys/class/net/"\$IF"/queues/rx-*/rps_cpus; do [ -e "\$f" ] && echo ${mask} > "\$f" || true; done; for f in /sys/class/net/"\$IF"/queues/rx-*/rps_flow_cnt; do [ -e "\$f" ] && echo 8192 > "\$f" || true; done'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF_RPS
+        chmod 644 /etc/systemd/system/rps-tune.service
+        systemctl daemon-reload
+        systemctl enable --now rps-tune.service >/dev/null || log_warn "Could not enable/start rps-tune.service"
+    else
+        rm -f /etc/systemd/system/rps-tune.service
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        log_info "Single-core node; RPS service skipped"
+    fi
+}
+
+print_network_verify() {
+    local iface qdisc conntrack cpus
+    iface="$(default_iface)"
+    cpus="$(nproc 2>/dev/null || echo 1)"
+    qdisc="n/a"
+    if [ -n "$iface" ] && command -v tc >/dev/null 2>&1; then
+        qdisc="$(tc qdisc show dev "$iface" 2>/dev/null | head -1 || true)"
+    fi
+    if [ -f /proc/sys/net/netfilter/nf_conntrack_max ]; then
+        conntrack="$(sysctl -n net.netfilter.nf_conntrack_max 2>/dev/null || cat /proc/sys/net/netfilter/nf_conntrack_max)"
+    else
+        conntrack="chưa nạp"
+    fi
+    cat <<EOF_VERIFY
+
+${GREEN}Network tuning verify${NC}
+  net.core.rmem_max: $(sysctl -n net.core.rmem_max 2>/dev/null || echo n/a)
+  net.core.wmem_max: $(sysctl -n net.core.wmem_max 2>/dev/null || echo n/a)
+  net.core.rmem_default: $(sysctl -n net.core.rmem_default 2>/dev/null || echo n/a)
+  net.core.wmem_default: $(sysctl -n net.core.wmem_default 2>/dev/null || echo n/a)
+  net.ipv4.udp_rmem_min: $(sysctl -n net.ipv4.udp_rmem_min 2>/dev/null || echo n/a)
+  net.ipv4.udp_wmem_min: $(sysctl -n net.ipv4.udp_wmem_min 2>/dev/null || echo n/a)
+  net.core.netdev_max_backlog: $(sysctl -n net.core.netdev_max_backlog 2>/dev/null || echo n/a)
+  net.core.default_qdisc: $(sysctl -n net.core.default_qdisc 2>/dev/null || echo n/a)
+  default_iface: ${iface:-n/a}
+  qdisc_current: ${qdisc}
+  cpu_cores: ${cpus}
+  conntrack_max: ${conntrack}
+EOF_VERIFY
 }
 
 sha256_file() { sha256sum "$1" | awk '{print $1}'; }
@@ -408,6 +532,11 @@ main() {
     require_root
     validate_args
     read_token
+    configure_network_tuning
+    print_network_verify
+    if [ "$TUNE_ONLY" -eq 1 ]; then
+        return
+    fi
     warn_v2bx
     stage_binaries
     backup_existing
