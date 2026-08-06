@@ -23,6 +23,7 @@ BACKUP_ROOT="/root"
 DEFAULT_KERNEL="singbox"
 DEFAULT_SOURCE_BASE="https://github.com/nonamezr/Xboard-Node/releases/download/v20260704-node-prod-full"
 EXPECTED_NODE_SHA="abbc312bae81313e06dd7498faa2273d68447902d4201c31a19b6228b3401b6a"
+INPUT_EXPECTED_NODE_SHA=""
 EXPECTED_GUARD_SHA="fa8a7fecc751187719c1a7797f211588e0255af1621b6fea09a6b06e6ade3cc9"
 
 MODE="machine"
@@ -70,6 +71,7 @@ Optional:
   --kernel singbox|xray    Kernel type for new config only (default: singbox)
   --source-base URL        Directory containing binaries; supports file://, http(s)://
                            default: https://github.com/nonamezr/Xboard-Node/releases/download/v20260704-node-prod-full
+  --expected-node-sha SHA  Expected SHA256 for custom --source-base outside allowlisted releases
   --node-binary PATH       Use local staged xboard-node binary
   --guard-binary PATH      Use local staged node-journal-guard binary
   --build-local            Build both binaries from current repo instead of downloading
@@ -101,6 +103,7 @@ parse_args() {
             --node-id|-n) NODE_ID="${2:-}"; shift 2 ;;
             --kernel|-k) KERNEL_TYPE="${2:-}"; shift 2 ;;
             --source-base) SOURCE_BASE="${2:-}"; shift 2 ;;
+            --expected-node-sha) INPUT_EXPECTED_NODE_SHA="${2:-}"; shift 2 ;;
             --node-binary) NODE_BINARY_SOURCE="${2:-}"; shift 2 ;;
             --guard-binary) GUARD_BINARY_SOURCE="${2:-}"; shift 2 ;;
             --build-local) BUILD_LOCAL=1; shift ;;
@@ -276,6 +279,31 @@ ${GREEN}Network tuning verify${NC}
   cpu_cores: ${cpus}
   conntrack_max: ${conntrack}
 EOF_VERIFY
+}
+
+resolve_expected_sha() {
+    case "${SOURCE_BASE%/}" in
+        *v20260704-node-prod-full)
+            EXPECTED_NODE_SHA="abbc312bae81313e06dd7498faa2273d68447902d4201c31a19b6228b3401b6a"
+            ;;
+        *v20260706-node-sniff-quic-prod)
+            EXPECTED_NODE_SHA="b5c8f89eb0de82e74fc8cededf1a449da7983cd1e7af303161e238e53d07b1f6"
+            ;;
+        *)
+            if [ -z "$INPUT_EXPECTED_NODE_SHA" ]; then
+                log_error "Unsupported --source-base: ${SOURCE_BASE}"
+                log_error "Allowed release tags: v20260704-node-prod-full, v20260706-node-sniff-quic-prod. For any other source, pass --expected-node-sha <sha256>."
+                exit 1
+            fi
+            EXPECTED_NODE_SHA="$INPUT_EXPECTED_NODE_SHA"
+            ;;
+    esac
+    if ! [[ "$EXPECTED_NODE_SHA" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        log_error "--expected-node-sha must be a 64-character SHA256 hex string"
+        exit 1
+    fi
+    log_info "Binary source: ${SOURCE_BASE}"
+    log_info "Expected node sha: ${EXPECTED_NODE_SHA:0:8}..."
 }
 
 sha256_file() { sha256sum "$1" | awk '{print $1}'; }
@@ -546,6 +574,7 @@ main() {
     require_root
     validate_args
     read_token
+    resolve_expected_sha
     configure_network_tuning
     print_network_verify
     if [ "$TUNE_ONLY" -eq 1 ]; then
