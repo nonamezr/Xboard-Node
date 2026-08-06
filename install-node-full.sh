@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -166,6 +167,14 @@ hex_mask_for_cpus() {
 
 configure_network_tuning() {
     log_step "Configuring VPN network tuning"
+    if ! command -v ip >/dev/null 2>&1; then
+        log_error "iproute2 is required: missing ip command"
+        exit 1
+    fi
+    if ! command -v tc >/dev/null 2>&1; then
+        log_error "iproute2 is required: missing tc command"
+        exit 1
+    fi
 
     cat >/etc/sysctl.d/99-vpn-udp.conf <<'EOF_SYSCTL_UDP'
 net.core.rmem_max = 16777216
@@ -199,6 +208,7 @@ net.netfilter.nf_conntrack_udp_timeout_stream = 180
 EOF_SYSCTL_CONNTRACK
     mkdir -p /etc/modprobe.d
     printf 'options nf_conntrack hashsize=32768\n' >/etc/modprobe.d/nf_conntrack.conf
+    [ -w /sys/module/nf_conntrack/parameters/hashsize ] && echo 32768 >/sys/module/nf_conntrack/parameters/hashsize || true
     if [ -f /proc/sys/net/netfilter/nf_conntrack_max ]; then
         sysctl -p /etc/sysctl.d/99-vpn-conntrack.conf >/dev/null
     else
@@ -208,6 +218,10 @@ EOF_SYSCTL_CONNTRACK
     local cpus mask
     cpus="$(nproc 2>/dev/null || echo 1)"
     if [ "$cpus" -ge 2 ]; then
+        if [ -f /etc/systemd/system/rps-tune.service ] && systemctl is-active --quiet rps-tune.service; then
+            log_info "rps-tune.service đã có, bỏ qua"
+            return
+        fi
         mask="$(hex_mask_for_cpus "$cpus")"
         cat >/etc/systemd/system/rps-tune.service <<EOF_RPS
 [Unit]
