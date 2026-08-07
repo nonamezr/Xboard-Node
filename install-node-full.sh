@@ -40,6 +40,8 @@ BUILD_LOCAL=0
 RESTART_SERVICES=1
 TUNE_ONLY=0
 VERIFY_PORT=""
+SKIP_OS_UPDATE=0
+REBOOT_REQUIRED=0
 TMP_DIR=""
 CLEANUP_DONE=0
 
@@ -77,7 +79,8 @@ Optional:
   --build-local            Build both binaries from current repo instead of downloading
   --verify-port PORT       Verify TCP listen port after restart (optional)
   --no-restart             Install files/services but do not restart services
-  --tune-only              Apply network sysctl/qdisc/RPS tuning only; do not touch binaries/services
+  --skip-os-update         Skip OS package update/sysstat/net-tools preparation
+  --tune-only              Apply network sysctl/qdisc/RPS tuning only; do not touch OS packages/binaries/services
   --help                   Show help
 
 Example:
@@ -109,7 +112,8 @@ parse_args() {
             --build-local) BUILD_LOCAL=1; shift ;;
             --verify-port) VERIFY_PORT="${2:-}"; shift 2 ;;
             --no-restart) RESTART_SERVICES=0; shift ;;
-            --tune-only) TUNE_ONLY=1; RESTART_SERVICES=0; shift ;;
+            --skip-os-update) SKIP_OS_UPDATE=1; shift ;;
+            --tune-only) TUNE_ONLY=1; SKIP_OS_UPDATE=1; RESTART_SERVICES=0; shift ;;
             --help|-h) usage; exit 0 ;;
             *) log_error "Unknown argument: $1"; usage; exit 2 ;;
         esac
@@ -166,6 +170,69 @@ hex_mask_for_cpus() {
         mask=$(( (1 << cpus) - 1 ))
     fi
     printf '%x' "$mask"
+}
+
+
+run_apt_step() {
+    local label="$1"
+    shift
+    if timeout 1800 env DEBIAN_FRONTEND=noninteractive "$@"; then
+        log_info "${label} OK"
+    else
+        log_warn "${label} failed; continuing node install"
+    fi
+}
+
+install_package_if_missing() {
+    local binary="$1" package="$2"
+    if command -v "$binary" >/dev/null 2>&1; then
+        log_info "${package} already present (${binary})"
+        return
+    fi
+    if ! command -v apt-get >/dev/null 2>&1; then
+        log_warn "apt-get missing; cannot install ${package}"
+        return
+    fi
+    run_apt_step "apt-get install ${package}" apt-get install -y "$package"
+}
+
+prepare_os() {
+    if [ "$TUNE_ONLY" -eq 1 ] || [ "$SKIP_OS_UPDATE" -eq 1 ]; then
+        log_info "OS preparation skipped"
+        return
+    fi
+
+    log_step "Preparing OS packages and observability"
+    if command -v apt-get >/dev/null 2>&1; then
+        run_apt_step "apt-get update" apt-get update
+        run_apt_step "apt-get upgrade" apt-get upgrade -y
+    else
+        log_warn "apt-get missing; OS package update skipped"
+    fi
+
+    install_package_if_missing "netstat" "net-tools"
+
+    if [ ! -f /etc/default/sysstat ]; then
+        install_package_if_missing "sar" "sysstat"
+    fi
+    if [ -f /etc/default/sysstat ]; then
+        if sed -i 's/^ENABLED=.*/ENABLED="true"/' /etc/default/sysstat; then
+            log_info "sysstat ENABLED=true"
+        else
+            log_warn "Could not enable sysstat in /etc/default/sysstat"
+        fi
+    else
+        log_warn "/etc/default/sysstat missing; sysstat config skipped"
+    fi
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl enable --now sysstat >/dev/null 2>&1 || log_warn "Could not enable/start sysstat"
+    else
+        log_warn "systemctl missing; sysstat service enable skipped"
+    fi
+
+    if [ -f /var/run/reboot-required ]; then
+        REBOOT_REQUIRED=1
+    fi
 }
 
 configure_network_tuning() {
@@ -567,6 +634,14 @@ ${GREEN}Install summary${NC}
   services: ${NODE_SERVICE}, ${GUARD_SERVICE}
   restart: $([ "$RESTART_SERVICES" -eq 1 ] && echo done || echo skipped)
 EOF_SUMMARY
+    if [ "$REBOOT_REQUIRED" -eq 1 ]; then
+        cat <<EOF_REBOOT
+
+${YELLOW}${BOLD}CAN REBOOT: kernel/thu vien da cap nhat. Node VAN CHAY BINH THUONG tren kernel cu.${NC}
+${YELLOW}Reboot luc KHONG CO KHACH: reboot${NC}
+${YELLOW}Sau reboot verify: sysctl -n net.core.rmem_default (mong doi 8388608)${NC}
+EOF_REBOOT
+    fi
 }
 
 main() {
@@ -575,6 +650,7 @@ main() {
     validate_args
     read_token
     resolve_expected_sha
+    prepare_os
     configure_network_tuning
     print_network_verify
     if [ "$TUNE_ONLY" -eq 1 ]; then
