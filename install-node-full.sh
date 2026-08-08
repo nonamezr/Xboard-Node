@@ -270,6 +270,21 @@ EOF_SYSCTL_QDISC
         log_warn "Default interface not found or tc missing; qdisc runtime apply skipped"
     fi
 
+    if modprobe tcp_bbr >/dev/null 2>&1; then
+        if sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null | grep -qw bbr; then
+            printf 'tcp_bbr
+' >/etc/modules-load.d/bbr.conf
+            cat >/etc/sysctl.d/99-vpn-bbr.conf <<'EOF_SYSCTL_BBR'
+net.ipv4.tcp_congestion_control = bbr
+EOF_SYSCTL_BBR
+            sysctl -p /etc/sysctl.d/99-vpn-bbr.conf >/dev/null || log_warn "Could not apply BBR congestion control"
+        else
+            log_warn "kernel khong ho tro bbr, giu nguyen"
+        fi
+    else
+        log_warn "Could not load tcp_bbr module; kernel khong ho tro bbr, giu nguyen"
+    fi
+
     cat >/etc/sysctl.d/99-vpn-conntrack.conf <<'EOF_SYSCTL_CONNTRACK'
 net.netfilter.nf_conntrack_max = 262144
 net.netfilter.nf_conntrack_tcp_timeout_established = 3600
@@ -341,6 +356,8 @@ ${GREEN}Network tuning verify${NC}
   net.ipv4.udp_wmem_min: $(sysctl -n net.ipv4.udp_wmem_min 2>/dev/null || echo n/a)
   net.core.netdev_max_backlog: $(sysctl -n net.core.netdev_max_backlog 2>/dev/null || echo n/a)
   net.core.default_qdisc: $(sysctl -n net.core.default_qdisc 2>/dev/null || echo n/a)
+  tcp_congestion_control: $(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo n/a)
+  tcp_available: $(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || echo n/a)
   default_iface: ${iface:-n/a}
   qdisc_current: ${qdisc}
   cpu_cores: ${cpus}
